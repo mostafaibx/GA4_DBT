@@ -1,6 +1,40 @@
+# DBT specific
+target/
+dbt_packages/
+logs/
+
+# Local dev environment
+profiles.yml
+.user.yml
+
+# Python virtual environment
+venv/
+env/
+.env/
 .venv/
 
+# IDE specific files
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS specific files
+.DS_Store
+Thumbs.db
+
+# Logs
+logs/
+*.log
+
+# Cache directories
+.pytest_cache/
+__pycache__/
+*.pyc
+
+# Local development configuration
+dev/
+local/
+
+# Service account key
 /service_account_key.json
-
-/logs/
-
