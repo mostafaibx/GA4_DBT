@@ -1,0 +1,278 @@
+version: 2
+
+models:
+  - name: fact_pageview
+    description: >
+      GA4 page_view-level fact (1 row per page_view event). Includes conformed keys,
+      page-centric metrics (view order, time on page, entrances/exits), and a
+      conformed join to dim_page using a shared page_key macro.
+    columns:
+      - name: event_id
+        description: "Stable event identifier from stg_ga4_events."
+        tests: [not_null, unique]
+      - name: date_key
+        description: "FK to dim_date (DATE(event_timestamp_utc))."
+        tests: [not_null]
+      - name: user_key
+        description: "FK to dim_user (derived from user_pseudo_id)."
+        tests: [not_null]
+      - name: session_key
+        description: "FK to fact_sessions (or dim_session if present)."
+      - name: page_key
+        description: "FK to dim_page; built with page_key_expr(url,title)."
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_page')
+              field: page_key
+      - name: device_key
+        description: "FK to dim_device (optional convenience)."
+      - name: geo_key
+        description: "FK to dim_geo (optional convenience)."
+      - name: traffic_key
+        description: "FK to dim_traffic (optional convenience)."
+      - name: view_number_in_session
+        description: "Ordinal of the pageview within its session."
+      - name: time_on_page_sec
+        description: >
+          Time until the next page_view in the same session. Null on exits.
+          Note: differs from GA4 UI time-on-page rules for last page.
+      - name: is_entrance
+        description: "True when this is the first pageview in the session."
+      - name: is_exit
+        description: "True when no subsequent pageview exists in the session."
+      - name: page_domain
+        description: "From dim_page; normalized host/domain."
+      - name: page_path
+        description: "From dim_page; normalized path (no protocol/host)."
+      - name: page_query_clean
+        description: "From dim_page; cleaned query string (UTM/gclid/fbclid removed)."
+  - name: dim_items
+    description: "Product dimension built from GA4 items array. One row per product_item_id."
+    columns:
+      - name: item_key
+        description: "Surrogate key for the product."
+        tests: [not_null, unique]
+      - name: item_name
+        description: "Name of the product."
+      - name: item_variant
+        description: "Variant of the product."
+      - name: item_brand
+        description: "Brand of the product."
+
+  - name: fact_order
+    description: >
+      Transaction-level fact built from GA4 'purchase' events in ga4_obfuscated_sample_ecommerce.
+      One row per transaction_id, deduped. Includes line-item rollups, refund handling, and
+      conformed keys to join sessions, users, device/geo/traffic, and dates.
+    columns:
+      - name: order_key
+        description: "Surrogate PK for the order (hash of transaction_id)."
+        tests: [not_null, unique]
+
+      - name: transaction_id
+        description: "GA4 transaction id from purchase/refund events."
+        tests: [not_null]
+
+      - name: date_key
+        description: "FK to dim_date (DATE(order_ts))."
+        tests: [not_null]
+
+      - name: user_key
+        description: "FK to dim_user."
+        tests: [not_null]
+
+      - name: session_key
+        description: "FK for joining to fact_sessions (session of the purchase)."
+
+      - name: device_key
+        description: "FK to dim_device based on the purchase event."
+
+      - name: geo_key
+        description: "FK to dim_geo based on the purchase event."
+
+      - name: traffic_key
+        description: "FK to dim_traffic (UTM/source at purchase event time)."
+
+      - name: revenue
+        description: "Gross revenue captured on the chosen purchase event row."
+
+      - name: tax
+        description: "Tax amount captured on the purchase event."
+
+      - name: shipping
+        description: "Shipping amount captured on the purchase event."
+
+      - name: refund_value
+        description: "Total refunds for the transaction (prefers event total; falls back to items)."
+
+      - name: net_revenue
+        description: "revenue - refund_value."
+
+      - name: line_items
+        description: "Count of line items (from stg_ga4_items) in the transaction."
+
+      - name: distinct_items
+        description: "Distinct product count in the transaction (by product_item_id)."
+
+      - name: items_quantity
+        description: "Sum of item quantities for the transaction."
+
+      - name: items_revenue
+        description: "Sum of item revenues across all lines; used for cross-check."
+
+      - name: revenue_mismatch_flag
+        description: "True if items_revenue and purchase revenue differ by > 0.01; used as a data quality flag."
+
+      - name: has_refund_flag
+        description: "True if any refund is present for this transaction."
+
+      - name: order_coupon
+        description: "Coupon code applied at purchase (if present)."
+
+      - name: order_affiliation
+        description: "Affiliation/store name (if present)."
+
+      - name: shipping_tier
+        description: "Shipping tier/method if captured."
+
+  - name: fact_order_item
+    description: >
+      Line-item grain fact for GA4 purchase events. One row per (transaction_id, item_index).
+      Includes conformed keys (user/session/date/device/geo/traffic), normalized product
+      attributes via dim_items, and item-level refund handling. 
+    columns:
+      - name: order_item_key
+        description: "Surrogate PK for the line item: hash(transaction_id, item_index)."
+        tests: [not_null, unique]
+
+      - name: order_key
+        description: "Hash(transaction_id); used to join to fact_order quickly."
+        tests:
+          - relationships:
+              to: ref('fact_order')
+              field: order_key
+
+      - name: transaction_id
+        description: "GA4 transaction id."
+        tests: [not_null]
+
+      - name: date_key
+        description: "FK to dim_date (DATE(order_ts))."
+        tests: [not_null]
+
+      - name: user_key
+        description: "FK to dim_user."
+        tests: [not_null]
+
+      - name: session_key
+        description: "FK to fact_sessions (session of the purchase)."
+
+      - name: item_key
+        description: "FK to dim_items."
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_items')
+              field: item_key
+
+      - name: item_quantity
+        description: "Purchased quantity for the line."
+
+      - name: item_revenue
+        description: "Net line revenue on the purchase event (post-discount)."
+
+      - name: refunded_item_quantity
+        description: "Quantity refunded for this line item (from refund events)."
+
+      - name: refunded_item_revenue
+        description: "Revenue reversed for this line item (from refund events)."
+
+      - name: net_item_quantity
+        description: "item_quantity - refunded_item_quantity (not below 0)."
+
+      - name: net_item_revenue
+        description: "item_revenue - refunded_item_revenue."
+
+      - name: item_discount_value
+        description: "item_price*item_quantity - item_revenue (>=0)."
+
+      - name: purchase_unit_price
+        description: "item_revenue / item_quantity on the purchase event."
+
+      - name: effective_unit_price
+        description: "net_item_revenue / net_item_quantity after refunds."
+  - name: fact_event
+    description: "GA4 event-level fact (1 row per event_id)."
+    columns:
+      - name: event_id
+        tests: [not_null, unique]
+      - name: date_key
+        tests: [not_null]
+      - name: user_key
+        tests: [not_null]
+      - name: session_key
+        tests: []
+      - name: device_key
+        tests: []
+      - name: geo_key
+        tests: []
+      - name: traffic_key
+        tests: []
+      - name: page_key
+        tests: []
+
+
+  - name: fact_sessions
+    description: >
+      GA4 session-level fact (1 row per user_pseudo_id + ga_session_id). Includes conformed FK keys, session metrics,
+      engagement flag, and landing page attribution.
+    columns:
+      - name: session_key
+        description: "Surrogate key: hash(user_pseudo_id || ga_session_id)."
+        tests: [not_null, unique]
+      - name: date_key
+        description: "FK to dim_date (session start date)."
+        tests: [not_null]
+      - name: user_key
+        description: "FK to dim_user."
+        tests: [not_null]
+      - name: device_key
+        description: "FK to dim_device (from first event in session)."
+      - name: geo_key
+        description: "FK to dim_geo (from first event in session)."
+      - name: traffic_key
+        description: "FK to dim_traffic_source (from first event in session)."
+      - name: landing_page_key
+        description: "FK to dim_page for first page_view in session (nullable)."
+      - name: user_pseudo_id
+        description: "GA4 pseudonymous user id (natural key)."
+        tests: [not_null]
+      - name: ga_session_id
+        description: "GA4 session id (natural key)."
+        tests: [not_null]
+      - name: session_start_ts
+        description: "First event timestamp in the session."
+        tests: [not_null]
+      - name: session_end_ts
+        description: "Last event timestamp in the session."
+      - name: session_duration_sec
+        description: "Duration of session in seconds."
+      - name: session_start_date
+        description: "DATE(session_start_ts); table partition key."
+      - name: events
+        description: "Count of events in session."
+      - name: pageviews
+        description: "Count of page_view events in session."
+      - name: engagement_time_ms
+        description: "Sum of engagement_time_msec param across session."
+      - name: conversions
+        description: "Count of conversion events in session."
+      - name: transactions
+        description: "Distinct purchases (by transaction_id) in session."
+      - name: revenue
+        description: "Sum of purchase revenue in session (purchase events only)."
+      - name: engaged_session_flag
+        description: "GA4 engagement logic: ≥10s OR ≥2 pageviews OR any conversion."
+      - name: session_number
+        description: "User's session ordinal if available (max within session)."
