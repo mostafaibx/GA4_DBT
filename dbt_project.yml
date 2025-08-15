@@ -1,0 +1,135 @@
+name: 'ga4_warehouse'
+version: '1.0.0'
+config-version: 2
+
+profile: 'ga4_warehouse'
+
+# File paths
+model-paths: ["models"]
+analysis-paths: ["analyses"]
+test-paths: ["tests"]
+seed-paths: ["seeds"]
+macro-paths: ["macros"]
+snapshot-paths: ["snapshots"]
+
+clean-targets:
+  - "target"
+  - "dbt_packages"
+  - "logs"
+
+# Global variables for GA4 project
+vars:
+  # Define your GA4 dataset and project details
+  ga4_export_dataset: 'ga4_obfuscated_sample_ecommerce'  # Google's sample GA4 dataset
+  ga4_project: 'bigquery-public-data'  # Google's public datasets project
+  
+  # Date variables for incremental loads
+  ga4_start_date: '2021-01-20'          # earliest shard to scan on full refresh
+  ga4_incremental_lookback_days: 7      # sliding window for late arrivals
+  
+  # Event exclusions (common internal/test events to filter)
+  excluded_events: ['session_start', 'first_visit', 'scroll']
+  
+  # Environment configuration
+  environment: "{{ target.name }}"
+  
+  # Data quality thresholds
+  test_severity_threshold: 'warn'
+  max_stale_hours: 24
+
+# Global configurations
+on-run-start:
+  - "{{ log('Starting dbt run for GA4 Warehouse', info=True) }}"
+
+on-run-end:
+  - "{{ log('Completed dbt run for GA4 Warehouse', info=True) }}"
+
+# Model configurations following best practices
+models:
+  ga4_warehouse:
+    # Global model configs
+    +persist_docs:
+      relation: true
+      columns: true
+    +on_schema_change: 'sync_all_columns'
+    +grants:
+      select: ['data_analyst', 'data_scientist']
+    
+    # Source layer - raw data interface
+    source:
+      +materialized: view
+      +schema: source
+      +tags: ['source', 'raw']
+      +enabled: true
+    
+    # Staging layer - raw data cleaned and typed
+    staging:
+      +materialized: view
+      +schema: staging
+      ga4:
+        +tags: ['staging', 'ga4']
+        +docs:
+          node_color: '#90EE90'  # Light green for staging
+        # Event tables should be incremental for performance
+        stg_ga4_events:
+          +materialized: incremental
+          +incremental_strategy: insert_overwrite
+          +partition_by:
+            field:
+            data_type: 
+          +cluster_by:
+    
+    # Core layer - dimension and fact tables
+    core:
+      +materialized: table
+      +schema: core
+      ga4:
+        +tags: ['core', 'ga4']
+        +docs:
+          node_color: '#4169E1'  # Royal blue for core
+        # Dimension tables
+        dim_*:
+          +materialized: table
+        # Fact tables should be incremental
+        fact_*:
+          +materialized: incremental
+          +incremental_strategy: merge
+    
+    # Marts layer - final analytics-ready datasets
+    marts:
+      +materialized: table
+      +schema: marts
+      +grants:
+        select: ['data_analyst', 'data_scientist', 'business_user']
+      core:
+        +tags: ['marts', 'core']
+        +docs:
+          node_color: '#FF6B6B'  # Red for marts
+      marketing:
+        +tags: ['marts', 'marketing']
+        +docs:
+          node_color: '#FF6B6B'
+      product:
+        +tags: ['marts', 'product']
+        +docs:
+          node_color: '#FF6B6B'
+
+# Snapshot configurations
+snapshots:
+  ga4_warehouse:
+    +target_schema: snapshots
+    +unique_key: id
+    +strategy: timestamp
+    +updated_at: updated_at
+
+# Seed configurations
+seeds:
+  ga4_warehouse:
+    +schema: seeds
+    +quote_columns: true
+
+# Test configurations
+tests:
+  ga4_warehouse:
+    +severity: warn  # Default to warn, override for critical tests
+    +store_failures: true  # Store test failures for analysis
