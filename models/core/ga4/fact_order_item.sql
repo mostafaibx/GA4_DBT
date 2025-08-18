@@ -40,28 +40,20 @@ with base as (
     it.item_coupon,
     it.item_affiliation,
 
--- context used for conformed keys (optional joins avoided later)
+    -- context used for conformed keys (optional joins avoided later)
     ev.device_category,
     ev.device_operating_system                     as device_os,
-    ev.device_os_version,
-    ev.browser,
-    ev.browser_version,
+    ev.device_operating_system_version             as device_os_version,
+    ev.device_web_browser                          as browser,
+    ev.device_web_browser_version                  as browser_version,
     ev.geo_country,
     ev.geo_region,
     ev.geo_city,
-    ev.geo_language,
-    ev.traffic_source,
-    ev.traffic_medium,
-    ev.traffic_campaign,
-    ev.traffic_content,
-    ev.traffic_term
+    ev.traffic_source_source                       as traffic_source,
+    ev.traffic_source_medium                       as traffic_medium,
+    ev.traffic_source_name                         as traffic_campaign,
     ev.event_date_dt,
-    ev.page_location
-    ev.traffic_source,
-    ev.traffic_medium,
-    ev.traffic_campaign,
-    ev.traffic_content,
-    ev.traffic_term
+    {{ ga4_param_str('ev.event_params', 'page_location') }} as page_location
 
 
 
@@ -84,7 +76,7 @@ deduped as (
     select b.*,
            row_number() over (
              partition by b.transaction_id, b.item_index
-             order by pi.order_ts desc, pi.event_id desc
+             order by b.order_ts desc, b.event_id desc
            ) as rn
     from base b
   )
@@ -96,7 +88,7 @@ refund_items as (
   select
     ev.param_transaction_id                        as transaction_id,
     it.item_key,
-    it.product_item_id,
+    it.item_id as product_item_id,
     sum(coalesce(it.item_quantity, 0))             as refunded_item_quantity,
     sum(coalesce(it.item_revenue, 0))              as refunded_item_revenue  -- often negative in staging; we will subtract
   from {{ ref('stg_ga4_items') }} it
@@ -105,7 +97,7 @@ refund_items as (
   where ev.event_name = 'refund'
     and ev.param_transaction_id is not null
   {% if is_incremental() %}
-    and ev.event_date_dt >= date_sub(current_date(), interval {{ lookback_days }} day)
+    and ev.event_date_dt >= date_sub(current_date(), interval {{ var('core_lookback_days', 14) }} day)
   {% endif %}
   group by 1,2,3
 ),
@@ -124,63 +116,63 @@ assembled as (
     {{ dbt_utils.generate_surrogate_key(['transaction_id']) }}           as order_key,          -- join to fact_order quickly
 
     -- conformed FKs
-    {{ make_user_key('pid.user_pseudo_id') }}                            as user_key,
-    {{ make_session_key('pid.user_pseudo_id','pid.ga_session_id') }}     as session_key,
-    {{ make_date_key('date(pid.order_ts)') }}                            as date_key,
-    {{ make_device_key('pid.device_category','pid.device_os','pid.device_os_version','pid.browser','pid.browser_version') }} as device_key,
-    {{ make_geo_key('pid.geo_country','pid.geo_region','pid.geo_city','pid.geo_language') }}                                   as geo_key,
-    {{ make_traffic_key('pid.traffic_source','pid.traffic_medium','pid.traffic_campaign','pid.traffic_content','pid.traffic_term') }} as traffic_key,
+    {{ make_user_key('d.user_pseudo_id') }}                            as user_key,
+    {{ make_session_key('d.user_pseudo_id','d.ga_session_id') }}     as session_key,
+    {{ make_date_key('date(d.order_ts)') }}                            as date_key,
+    {{ make_device_key('d.device_category','d.device_os','d.device_os_version','d.browser','d.browser_version') }} as device_key,
+    {{ make_geo_key('d.geo_country','d.geo_region','d.geo_city') }}                                   as geo_key,
+    {{ make_traffic_key('d.traffic_source','d.traffic_medium','d.traffic_campaign','cast(null as string)','cast(null as string)') }} as traffic_key,
 
     -- natural identifiers & timing
-    pid.transaction_id,
-    pid.user_pseudo_id,
-    pid.ga_session_id,
-    pid.currency,
-    pid.order_ts,
-    date(pid.order_ts)                                                   as order_date,
+    d.transaction_id,
+    d.user_pseudo_id,
+    d.ga_session_id,
+    d.currency,
+    d.order_ts,
+    date(d.order_ts)                                                   as order_date,
 
     -- product keys + canonical attributes from the dimension (if present)
-    pid.item_key,
-    coalesce(di.product_item_id, pid.product_item_id)                    as product_item_id,
-    coalesce(di.item_name,       pid.item_name)                          as item_name,
-    coalesce(di.item_brand,      pid.item_brand)                         as item_brand,
-    coalesce(di.item_variant,    pid.item_variant)                       as item_variant,
-    coalesce(di.item_category1,  pid.item_category1)                     as item_category1,
-    coalesce(di.item_category2,  pid.item_category2)                     as item_category2,
-    coalesce(di.item_category3,  pid.item_category3)                     as item_category3,
-    coalesce(di.item_category4,  pid.item_category4)                     as item_category4,
-    coalesce(di.item_category5,  pid.item_category5)                     as item_category5,
+    d.item_key,
+    coalesce(di.item_id, d.item_id)                    as product_item_id,
+    coalesce(di.item_name,       d.item_name)                          as item_name,
+    coalesce(di.item_brand,      d.item_brand)                         as item_brand,
+    coalesce(di.item_variant,    d.item_variant)                       as item_variant,
+    coalesce(di.item_category,   d.item_category)                      as item_category1,
+    coalesce(di.item_category2,  d.item_category2)                     as item_category2,
+    coalesce(di.item_category3,  d.item_category3)                     as item_category3,
+    coalesce(di.item_category4,  d.item_category4)                     as item_category4,
+    coalesce(di.item_category5,  d.item_category5)                     as item_category5,
 
     -- item economics (purchase)
-    pid.item_index,
-    pid.item_price,
-    pid.item_quantity,
-    pid.item_revenue,
+    d.item_index,
+    d.item_price,
+    d.item_quantity,
+    d.item_revenue,
 
     -- refund economics (item level)
     coalesce(ri.refunded_item_quantity, 0)                               as refunded_item_quantity,
     coalesce(ri.refunded_item_revenue, 0)                                as refunded_item_revenue,
 
     -- net amounts (purchase minus refunds)
-    greatest(pid.item_quantity - coalesce(ri.refunded_item_quantity, 0), 0) as net_item_quantity,
-    (pid.item_revenue - coalesce(ri.refunded_item_revenue, 0))              as net_item_revenue,
+    greatest(d.item_quantity - coalesce(ri.refunded_item_quantity, 0), 0) as net_item_quantity,
+    (d.item_revenue - coalesce(ri.refunded_item_revenue, 0))              as net_item_revenue,
 
     -- derived KPIs
-    greatest(coalesce(pid.item_price, 0) * coalesce(pid.item_quantity, 0) - coalesce(pid.item_revenue, 0), 0) as item_discount_value,
-    safe_divide(pid.item_revenue, nullif(pid.item_quantity, 0))          as purchase_unit_price,
-    safe_divide((pid.item_revenue - coalesce(ri.refunded_item_revenue, 0)),
-                nullif(greatest(pid.item_quantity - coalesce(ri.refunded_item_quantity, 0), 0), 0))          as effective_unit_price,
+    greatest(coalesce(d.item_price, 0) * coalesce(d.item_quantity, 0) - coalesce(d.item_revenue, 0), 0) as item_discount_value,
+    safe_divide(d.item_revenue, nullif(d.item_quantity, 0))          as purchase_unit_price,
+    safe_divide((d.item_revenue - coalesce(ri.refunded_item_revenue, 0)),
+                nullif(greatest(d.item_quantity - coalesce(ri.refunded_item_quantity, 0), 0), 0))          as effective_unit_price,
 
     -- optional meta
-    pid.item_coupon,
-    pid.item_affiliation
+    d.item_coupon,
+    d.item_affiliation
 
-  from deduped pid
+  from deduped d
   left join refund_items ri
-    on ri.transaction_id = pid.transaction_id
-   and ri.item_key       = pid.item_key
+    on ri.transaction_id = d.transaction_id
+   and ri.item_key       = d.item_key
   left join {{ ref('dim_items') }} di
-    on di.item_key       = pid.item_key
+    on di.item_key       = d.item_key
 )
 
 select * from assembled
