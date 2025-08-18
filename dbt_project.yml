@@ -37,6 +37,10 @@ vars:
   test_severity_threshold: 'warn'
   max_stale_hours: 24
 
+  date_spine_start: '2020-11-01'
+  date_spine_future_days: 365
+  fiscal_year_start_month: 1
+
 # Global configurations
 on-run-start:
   - "{{ log('Starting dbt run for GA4 Warehouse', info=True) }}"
@@ -52,8 +56,6 @@ models:
       relation: true
       columns: true
     +on_schema_change: 'sync_all_columns'
-    +grants:
-      select: ['data_analyst', 'data_scientist']
     
     # Source layer - raw data interface
     source:
@@ -74,10 +76,6 @@ models:
         stg_ga4_events:
           +materialized: incremental
           +incremental_strategy: insert_overwrite
-          +partition_by:
-            field:
-            data_type: 
-          +cluster_by:
     
     # Core layer - dimension and fact tables
     core:
@@ -99,8 +97,6 @@ models:
     marts:
       +materialized: table
       +schema: marts
-      +grants:
-        select: ['data_analyst', 'data_scientist', 'business_user']
       core:
         +tags: ['marts', 'core']
         +docs:
