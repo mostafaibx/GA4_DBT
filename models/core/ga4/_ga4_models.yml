@@ -47,18 +47,6 @@ models:
         description: "From dim_page; normalized path (no protocol/host)."
       - name: page_query_clean
         description: "From dim_page; cleaned query string (UTM/gclid/fbclid removed)."
-  - name: dim_items
-    description: "Product dimension built from GA4 items array. One row per product_item_id."
-    columns:
-      - name: item_key
-        description: "Surrogate key for the product."
-        tests: [not_null, unique]
-      - name: item_name
-        description: "Name of the product."
-      - name: item_variant
-        description: "Variant of the product."
-      - name: item_brand
-        description: "Brand of the product."
 
   - name: fact_order
     description: >
@@ -276,3 +264,235 @@ models:
         description: "GA4 engagement logic: ≥10s OR ≥2 pageviews OR any conversion."
       - name: session_number
         description: "User's session ordinal if available (max within session)."
+
+
+  - name: dim_device
+    description: >
+      Conformed device dimension keyed on (category, os(+version), browser(+version)).
+      Values are normalized (lower/trimmed). Attributes use most-recent non-null selection.
+      Includes family rollups and first/last seen metadata.
+    columns:
+      - name: device_key
+        description: "Conformed PK matching make_device_key() used in facts."
+        tests: [not_null, unique]
+
+      - name: device_category
+        description: "GA4 device category: desktop, mobile, tablet, etc."
+        tests: [not_null]
+
+      - name: os
+        description: "Operating system (normalized, lowercased)."
+        tests: [not_null]
+
+      - name: os_version
+        description: "OS version (normalized)."
+
+      - name: browser
+        description: "Web browser (normalized)."
+        tests: [not_null]
+
+      - name: browser_version
+        description: "Browser version (normalized)."
+
+      - name: brand
+        description: "Most-recent non-null mobile brand observed for this fingerprint."
+
+      - name: model
+        description: "Most-recent non-null mobile model observed for this fingerprint."
+
+      - name: marketing_name
+        description: "Most-recent marketing name (if available)."
+
+      - name: hardware_model
+        description: "Most-recent hardware model string."
+
+      - name: language
+        description: "Most-recent device language observed."
+
+      - name: limit_ad_tracking
+        description: "Most-recent limit-ad-tracking flag for this fingerprint."
+
+      - name: os_family
+        description: "Coarse OS family (ios, android, windows, macos, linux, chromeos)."
+
+      - name: browser_family
+        description: "Coarse browser family (chrome, safari, edge, firefox, etc.)."
+
+      - name: is_mobile
+        description: "True if category in (mobile, tablet)."
+
+      - name: is_tablet
+        description: "True if category = tablet."
+
+      - name: is_desktop
+        description: "True if category = desktop."
+
+      - name: first_seen_ts
+        description: "Earliest event timestamp for this fingerprint."
+
+      - name: last_seen_ts
+        description: "Latest event timestamp for this fingerprint."
+
+      - name: events_observed
+        description: "Total events observed with this fingerprint."
+
+      - name: users_observed
+        description: "Distinct users observed with this fingerprint."
+
+  - name: dim_items
+    description: >
+      Product/item dimension for GA4 ecommerce. One row per item_key (aligned with facts).
+      Attributes are Type 1 “current” using most-recent non-null values. Includes category helpers
+      and observed price profiling for QA and analytics (not an authoritative price list).
+    columns:
+      - name: item_key
+        description: "Conformed PK; must match item_key used in fact_order_item."
+        tests: [not_null, unique]
+
+      - name: product_item_id
+        description: "Natural product ID if provided by the site/app."
+
+      - name: item_name
+        description: "Most-recent non-null display name."
+      - name: item_name_norm
+        description: "Lower/trimmed name for grouping."
+
+      - name: item_brand
+        description: "Most-recent brand."
+      - name: item_brand_norm
+        description: "Lower/trimmed brand for grouping."
+
+      - name: item_variant
+        description: "Most-recent variant or option label."
+      - name: item_variant_norm
+        description: "Lower/trimmed variant for grouping."
+
+      - name: item_category1
+        description: "Top-level category (most-recent)."
+      - name: item_category2
+      - name: item_category3
+      - name: item_category4
+      - name: item_category5
+      - name: category_path
+        description: "Concatenated non-empty categories with ' > '."
+      - name: category_leaf
+        description: "Deepest non-empty category."
+
+      - name: first_seen_ts
+        description: "Earliest item row observed."
+      - name: last_seen_ts
+        description: "Latest item row observed."
+      - name: observed_item_rows
+        description: "Row count in stg_ga4_items contributing to this item."
+
+      - name: min_observed_price
+      - name: p50_observed_price
+      - name: p90_observed_price
+      - name: max_observed_price
+      - name: avg_observed_price
+        description: "Observed price stats (for QA; may mix currencies)."
+
+      - name: is_active_recent
+        description: "True if last_seen within items_active_days (default 180)."
+
+  - name: dim_geo
+    description: >
+      Conformed geography dimension keyed on (country, region, city, language).
+      Values are normalized for key stability; continent/sub_continent/metro are descriptive
+      attributes chosen from the most-recent non-null observations. Includes first/last seen
+      and activity rollups for QA.
+    columns:
+      - name: geo_key
+        description: "Conformed PK matching make_geo_key(country, region, city, language)."
+        tests: [not_null, unique]
+
+      - name: country
+        description: "Lowercased country name from GA4 (canonical key component)."
+      - name: region
+        description: "Lowercased region/state/province (canonical key component)."
+      - name: city
+        description: "Lowercased city (canonical key component)."
+      - name: language
+        description: "Lowercased geo_language (canonical key component)."
+
+      - name: country_display
+        description: "Initcapped display variant for BI."
+      - name: region_display
+      - name: city_display
+      - name: language_display
+        description: "Uppercased language display (e.g., 'EN-US')."
+
+      - name: continent
+        description: "Most-recent continent label observed (not part of key)."
+      - name: sub_continent
+        description: "Most-recent sub-continent label (not part of key)."
+      - name: metro
+        description: "Most-recent metro label (US-only; not part of key)."
+
+      - name: geo_scope
+        description: "Precision level: city/region/country/unknown."
+
+      - name: is_eu_member
+        description: "Boolean derived from a maintained list of EU countries."
+
+      - name: first_seen_ts
+        description: "Earliest event timestamp for this fingerprint."
+      - name: last_seen_ts
+        description: "Latest event timestamp for this fingerprint."
+      - name: events_observed
+        description: "Total events observed with this fingerprint."
+      - name: users_observed
+        description: "Distinct users observed with this fingerprint."
+
+  - name: dim_traffic
+    description: >
+      Conformed traffic dimension keyed on (source, medium, campaign, content, term).
+      Values are normalized (lower/trim). Includes a defensible derived channel grouping,
+      GA4's own channel label (when present), and activity rollups for QA.
+    columns:
+      - name: traffic_key
+        description: "Conformed PK matching make_traffic_key(source, medium, campaign, content, term)."
+        tests: [not_null, unique]
+
+      - name: source
+        description: "Lowercased traffic source (UTM source or referrer domain label)."
+        tests: [not_null]
+      - name: medium
+        description: "Lowercased traffic medium (e.g., cpc, organic, referral, email)."
+        tests: [not_null]
+      - name: campaign
+        description: "Lowercased campaign identifier (may be empty)."
+      - name: content
+        description: "Lowercased ad/content identifier (may be empty)."
+      - name: term
+        description: "Lowercased keyword/term (may be empty)."
+
+      - name: source_display
+        description: "Pretty-cased source for BI."
+      - name: medium_display
+      - name: campaign_display
+      - name: content_display
+      - name: term_display
+
+      - name: channel_grouping
+        description: "Derived channel grouping from source/medium/term classification."
+      - name: source_host
+        description: "Host extracted from source if it looks like a URL/domain."
+      - name: ga4_channel_grouping
+        description: "GA4-provided session_default_channel_grouping if available."
+
+      - name: is_paid
+        description: "True for Paid Search/Paid Social/Display/Video."
+      - name: is_nonpaid
+        description: "True for Organic Search/Organic Social/Referral/Email/Direct."
+
+      - name: first_seen_ts
+        description: "Earliest event timestamp observed for this fingerprint."
+      - name: last_seen_ts
+        description: "Latest event timestamp observed for this fingerprint."
+      - name: events_observed
+        description: "Total events observed with this fingerprint."
+      - name: sessions_observed
+        description: "Distinct sessions observed with this fingerprint."
+      - name: users_observed
+        description: "Distinct users observed with this fingerprint."
