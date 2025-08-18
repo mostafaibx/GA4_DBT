@@ -39,7 +39,7 @@ select
   item_name_latest,
   item_variant_latest,
   item_brand_latest,
-  item_category1,
+  item_category,
   item_category2,
   item_category3,
   item_category4,
