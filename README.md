@@ -14,7 +14,6 @@ A production-ready dbt project for transforming Google Analytics 4 (GA4) BigQuer
 - [Usage](#usage)
 - [Testing](#testing)
 - [Contributing](#contributing)
-- [Support](#support)
 
 ## 🎯 Overview
 
@@ -325,20 +324,7 @@ sqlfluff lint models/
 sqlfluff fix models/
 ```
 
-## 📚 Resources
 
-- [dbt Documentation](https://docs.getdbt.com/)
-- [GA4 BigQuery Export Schema](https://support.google.com/analytics/answer/7029846)
-- [BigQuery Best Practices](https://cloud.google.com/bigquery/docs/best-practices-performance-overview)
-- [Kimball Dimensional Modeling](https://www.kimballgroup.com/data-warehouse-business-intelligence-resources/kimball-techniques/dimensional-modeling-techniques/)
-
-## 🆘 Support
-
-For issues and questions:
-- Check our [FAQ](docs/faq.md)
-- Search [existing issues](https://github.com/your-org/ga4-warehouse/issues)
-- Create a [new issue](https://github.com/your-org/ga4-warehouse/issues/new)
-- Contact the data team at data-team@your-company.com
 
 ## 📄 License
 
