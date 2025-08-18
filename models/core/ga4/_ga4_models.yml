@@ -403,7 +403,7 @@ models:
       and activity rollups for QA.
     columns:
       - name: geo_key
-        description: "Conformed PK matching make_geo_key(country, region, city, language)."
+        description: "Conformed PK matching make_geo_key(country, region, city)."
         tests: [not_null, unique]
 
       - name: country
