@@ -24,6 +24,30 @@ with purchases as (
     coalesce(e.ecommerce_tax_value, 0)             as tax,
     coalesce(e.ecommerce_shipping_value, 0)        as shipping,
 
+    -- device fields
+    e.device_category,
+    e.device_operating_system                      as device_os,
+    e.device_operating_system_version              as device_os_version,
+    e.device_web_browser                           as browser,
+    e.device_web_browser_version                   as browser_version,
+
+    -- geography fields  
+    e.geo_country,
+    e.geo_region,
+    e.geo_city,
+    coalesce(e.device_language, 'en')              as geo_language,
+
+    -- traffic source fields
+    e.traffic_source_source                        as traffic_source,
+    e.traffic_source_medium                        as traffic_medium,
+    {{ ga4_param_str('e.event_params', 'campaign') }}    as traffic_campaign,
+    {{ ga4_param_str('e.event_params', 'content') }}     as traffic_content,
+    {{ ga4_param_str('e.event_params', 'term') }}        as traffic_term,
+
+    -- additional commerce parameters
+    {{ ga4_param_str('e.event_params', 'coupon') }}      as order_coupon,
+    {{ ga4_param_str('e.event_params', 'affiliation') }} as order_affiliation,
+    {{ ga4_param_str('e.event_params', 'shipping_tier') }} as shipping_tier
 
   from {{ ref('stg_ga4_events') }} e
   where e.event_name = 'purchase'
@@ -63,7 +87,7 @@ refund_events as (
   where ev.event_name = 'refund'
     and ev.param_transaction_id is not null
   {% if is_incremental() %}
-    and ev.event_date_dt >= date_sub(current_date(), interval {{ lookback_days }} day)
+    and ev.event_date_dt >= date_sub(current_date(), interval {{ var('core_lookback_days', 14) }} day)
   {% endif %}
   group by 1
 ),
@@ -80,7 +104,7 @@ refund_items as (
   where ev.event_name = 'refund'
     and ev.param_transaction_id is not null
   {% if is_incremental() %}
-    and ev.event_date_dt >= date_sub(current_date(), interval {{ lookback_days }} day)
+    and ev.event_date_dt >= date_sub(current_date(), interval {{ var('core_lookback_days', 14) }} day)
   {% endif %}
   group by 1
 ),
@@ -105,9 +129,9 @@ assembled as (
     {{ dbt_utils.generate_surrogate_key(['p.transaction_id']) }}         as order_key,
     {{ make_user_key('p.user_pseudo_id') }}                              as user_key,
     {{ make_session_key('p.user_pseudo_id','p.ga_session_id') }}         as session_key,
-    {{ make_date_key('date(p.order_ts)') }}                               as date_key,
+    {{ make_date_key('date(p.event_timestamp_utc)') }}                   as date_key,
     {{ make_device_key('p.device_category','p.device_os','p.device_os_version','p.browser','p.browser_version') }} as device_key,
-    {{ make_geo_key('p.geo_country','p.geo_region','p.geo_city','p.geo_language') }}                                as geo_key,
+    {{ make_geo_key('p.geo_country','p.geo_region','p.geo_city') }}                                as geo_key,
     {{ make_traffic_key('p.traffic_source','p.traffic_medium','p.traffic_campaign','p.traffic_content','p.traffic_term') }} as traffic_key,
 
     -- naturals + basics
@@ -115,8 +139,8 @@ assembled as (
     p.user_pseudo_id,
     p.ga_session_id,
     p.currency,
-    p.order_ts,
-    date(p.order_ts)                                                     as order_date,
+    p.event_timestamp_utc                                                as order_ts,
+    date(p.event_timestamp_utc)                                          as order_date,
 
     -- amounts (purchase)
     p.revenue,
