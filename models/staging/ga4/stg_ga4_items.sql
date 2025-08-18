@@ -32,7 +32,7 @@ with events as (
       from unnest(event_params) ep
       where ep.key = 'currency'
       limit 1
-    )              as param_currency,
+    )              as param_currency
 
     from {{ ref('stg_ga4_events') }}
     where array_length(items) > 0
@@ -55,7 +55,7 @@ unnested_items as (
 renamed as (
     select
         event_id,
-        {{ make_item_key() }} as item_key,
+        {{ make_item_key('item.item_id', 'item.item_name', 'item.item_variant') }} as item_key,
         user_pseudo_id,
         event_name,
 
@@ -72,7 +72,7 @@ renamed as (
         item.item_name as item_name,
         item.item_variant as item_variant,
         item.item_brand as item_brand,
-        item.item_category as item_category1,
+        item.item_category as item_category,
         item.item_category2 as item_category2,
         item.item_category3 as item_category3,
         item.item_category4 as item_category4,
@@ -86,7 +86,7 @@ renamed as (
         cast(item.item_refund_in_usd as float64) as item_refund_in_usd,
         item.coupon as item_coupon,
         item.affiliation as item_affiliation,
-        cast(item.location_id as int64) as item_location_id,
+        item.location_id as item_location_id,
         item.item_list_id as item_list_id,
         item.item_list_name as item_list_name,
         item.item_list_index as item_list_index,
