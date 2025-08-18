@@ -9,11 +9,12 @@
 
 with base as (
   select
-    lower(trim(coalesce(traffic_source,  ''))) as source,
-    lower(trim(coalesce(traffic_medium,  ''))) as medium,
-    lower(trim(coalesce(traffic_campaign,''))) as campaign,
-    lower(trim(coalesce(traffic_content, ''))) as content,
-    lower(trim(coalesce(traffic_term,    ''))) as term,
+    lower(trim(coalesce(traffic_source_source,  ''))) as source,
+    lower(trim(coalesce(traffic_source_name,  ''))) as source_name,
+    lower(trim(coalesce(traffic_source_medium,  ''))) as medium,
+    lower(trim(coalesce({{ ga4_param_str('event_params', 'campaign') }}, ''))) as campaign,
+    lower(trim(coalesce({{ ga4_param_str('event_params', 'content') }}, ''))) as content,
+    lower(trim(coalesce({{ ga4_param_str('event_params', 'term') }}, ''))) as term,
     event_timestamp_utc,
     user_pseudo_id,
     ga_session_id
@@ -24,7 +25,7 @@ with base as (
 
 agg as (
   select
-    source, medium, campaign, content, term,
+    source, source_name, medium, campaign, content, term,
 
 
     min(event_timestamp_utc) as first_event_ts,
@@ -33,7 +34,7 @@ agg as (
     count(*) as events_observed,
     count(distinct user_pseudo_id) as user_ids_observed
   from base
-  group by 1,2,3,4,5
+  group by 1,2,3,4,5,6
 ),
 
 classified as (
@@ -46,14 +47,14 @@ classified as (
     coalesce(nullif(regexp_extract(a.source, r'^(?:https?://)?([^/]+)'), ''), a.source) as source_host,
 
     -- boolean helpers
-    (a.medium regexp r'(cpc|ppc|paidsearch|paid-search|sem)') as is_paid_search_medium,
-    (a.medium regexp r'(paid[_\- ]?social|paidsocial)')       as is_paid_social_medium,
-    (a.medium regexp r'(display|banner|cpm)')                 as is_display_medium,
-    (a.medium regexp r'(video|cpv|trueview)')                 as is_video_medium,
-    (a.medium regexp r'(email|e-mail|newsletter)')            as is_email_medium,
-    (a.medium regexp r'(affiliate)')                          as is_affiliate_medium,
-    (a.medium regexp r'(organic|seo)')                        as is_organic_medium,
-    (a.medium regexp r'(referral)')                           as is_referral_medium,
+    REGEXP_CONTAINS(a.medium, r'(cpc|ppc|paidsearch|paid-search|sem)') as is_paid_search_medium,
+    REGEXP_CONTAINS(a.medium, r'(paid[_\- ]?social|paidsocial)')       as is_paid_social_medium,
+    REGEXP_CONTAINS(a.medium, r'(display|banner|cpm)')                 as is_display_medium,
+    REGEXP_CONTAINS(a.medium, r'(video|cpv|trueview)')                 as is_video_medium,
+    REGEXP_CONTAINS(a.medium, r'(email|e-mail|newsletter)')            as is_email_medium,
+    REGEXP_CONTAINS(a.medium, r'(affiliate)')                          as is_affiliate_medium,
+    REGEXP_CONTAINS(a.medium, r'(organic|seo)')                        as is_organic_medium,
+    REGEXP_CONTAINS(a.medium, r'(referral)')                           as is_referral_medium,
     (a.medium = '(none)' or a.source in ('(direct)','direct','')) as is_direct_hint,
 
     -- basic social source list (extend as needed)
@@ -62,27 +63,21 @@ classified as (
 
     -- final derived channel grouping (you can tune these rules)
     case
-      when is_direct_hint and a.campaign = '' and a.term = '' then 'Direct'
-      when is_paid_social_medium or (is_social_source and is_display_medium) then 'Paid Social'
-      when is_social_source or a.medium in ('social','social-network','social-media','sm') then 'Organic Social'
-      when is_paid_search_medium or (a.medium in ('cpc','ppc') or (a.source in ('google','bing','yahoo','baidu','duckduckgo') and a.medium in ('paid','cpc','ppc')))
+      when (a.medium = '(none)' or a.source in ('(direct)','direct','')) and a.campaign = '' and a.term = '' then 'Direct'
+      when REGEXP_CONTAINS(a.medium, r'(paid[_\- ]?social|paidsocial)') or (a.source in ('facebook','fb','instagram','ig','tiktok','twitter','x','linkedin','pinterest','youtube','yt','snapchat','reddit','quora','threads','wechat','weibo','vk','line') and REGEXP_CONTAINS(a.medium, r'(display|banner|cpm)')) then 'Paid Social'
+      when a.source in ('facebook','fb','instagram','ig','tiktok','twitter','x','linkedin','pinterest','youtube','yt','snapchat','reddit','quora','threads','wechat','weibo','vk','line') or a.medium in ('social','social-network','social-media','sm') then 'Organic Social'
+      when REGEXP_CONTAINS(a.medium, r'(cpc|ppc|paidsearch|paid-search|sem)') or (a.medium in ('cpc','ppc') or (a.source in ('google','bing','yahoo','baidu','duckduckgo') and a.medium in ('paid','cpc','ppc')))
            then 'Paid Search'
-      when is_organic_medium or (a.medium = 'organic') or (a.source in ('google','bing','yahoo','baidu','duckduckgo') and a.medium in ('organic','(organic)'))
+      when REGEXP_CONTAINS(a.medium, r'(organic|seo)') or (a.medium = 'organic') or (a.source in ('google','bing','yahoo','baidu','duckduckgo') and a.medium in ('organic','(organic)'))
            then 'Organic Search'
-      when is_display_medium then 'Display'
-      when is_video_medium then 'Video'
-      when is_email_medium then 'Email'
-      when is_affiliate_medium then 'Affiliates'
-      when is_referral_medium or a.medium = 'referral' or (a.source_host not in ('','(direct)','direct') and a.campaign = '' and a.medium = '')
+      when REGEXP_CONTAINS(a.medium, r'(display|banner|cpm)') then 'Display'
+      when REGEXP_CONTAINS(a.medium, r'(video|cpv|trueview)') then 'Video'
+      when REGEXP_CONTAINS(a.medium, r'(email|e-mail|newsletter)') then 'Email'
+      when REGEXP_CONTAINS(a.medium, r'(affiliate)') then 'Affiliates'
+      when REGEXP_CONTAINS(a.medium, r'(referral)') or a.medium = 'referral' or (coalesce(nullif(regexp_extract(a.source, r'^(?:https?://)?([^/]+)'), ''), a.source) not in ('','(direct)','direct') and a.campaign = '' and a.medium = '')
            then 'Referral'
       else 'Unassigned'
-    end as channel_grouping,
-
-    -- paid/owned flags (helpful for quick filters)
-    case
-      when channel_grouping in ('Paid Search','Paid Social','Display','Video') then true else false end as is_paid,
-    case
-      when channel_grouping in ('Organic Search','Organic Social','Referral','Email','Direct') then true else false end as is_nonpaid
+    end as channel_grouping
 
   from agg a
 ),
@@ -104,18 +99,19 @@ final as (
     -- derived attributes
     channel_grouping,
     nullif(initcap(source_host), '') as source_host,
-    ga4_channel_grouping,            -- GA4's own label, if available
 
-    is_paid,
-    is_nonpaid,
+    -- paid/owned flags (helpful for quick filters)
+    case
+      when channel_grouping in ('Paid Search','Paid Social','Display','Video') then true else false end as is_paid,
+    case
+      when channel_grouping in ('Organic Search','Organic Social','Referral','Email','Direct') then true else false end as is_nonpaid,
 
     -- activity metadata
-    first_seen_ts,
-    last_seen_ts,
-    date(first_seen_ts) as first_seen_date,
-    date(last_seen_ts)  as last_seen_date,
+    first_event_ts as first_seen_ts,
+    last_event_ts as last_seen_ts,
+    date(first_event_ts) as first_seen_date,
+    date(last_event_ts)  as last_seen_date,
     events_observed,
-    sessions_observed,
     users_observed
   from classified
 )
