@@ -18,6 +18,14 @@ with src as (
     -- Reprocess trailing days to catch late-arriving events (default 3)
     where event_date_dt >= date_sub(current_date(), interval {{ var('ga4_late_arrival_days', 3) }} day)
   {% endif %}
+), 
+
+enriched as (
+  select
+    *,
+    -- Extract page location for page key
+    {{ ga4_param_str('event_params', 'page_location') }} as page_location_param
+  from src
 ),
 
 keys as (
@@ -35,45 +43,43 @@ keys as (
     {{ make_date_key('event_date_dt') }}                                   as date_key,
     {{ make_user_key('user_pseudo_id') }}                                  as user_key,
     {{ make_session_key('user_pseudo_id','ga_session_id') }}               as session_key,
-    {{ make_device_key('device_category','device_operating_system','device_os_version','browser','browser_version') }} as device_key,
-    {{ make_geo_key('geo_country','geo_region','geo_city','geo_language') }}                                         as geo_key,
-    {{ make_traffic_key('traffic_source','traffic_medium','traffic_campaign','traffic_content','traffic_term') }}     as traffic_key,
+    {{ make_device_key('device_category','device_operating_system','device_operating_system_version','device_web_browser','device_web_browser_version') }} as device_key,
+    {{ make_geo_key('geo_country','geo_region','geo_city') }}                                         as geo_key,
+    {{ make_traffic_key('traffic_source_source','traffic_source_medium','traffic_source_name') }}     as traffic_key,
 
-    -- Page key only when page attributes exist (often only for page_view)
+    -- Page key - use extracted page location
     case 
-      when page_host is not null or page_path is not null or page_title is not null then
-        {{ make_page_key('page_host','page_path','page_title') }}
+      when page_location_param is not null then
+        {{ make_page_key('page_location_param') }}
       else null
     end as page_key,
 
     -- Keep useful degenerate attributes for quick filters
-    page_title,
-    page_location,
-    page_path,
-    page_host,
-    content_group,
+    {{ ga4_param_str('event_params', 'page_title') }} as page_title,
+    {{ ga4_param_str('event_params', 'page_location') }} as page_location,
+    {{ ga4_param_str('event_params', 'page_path') }} as page_path,
+    {{ ga4_param_str('event_params', 'page_referrer') }} as page_referrer,
+    {{ ga4_param_str('event_params', 'content_group1') }} as content_group,
 
     -- Common metrics-ready fields
-    is_conversion,
+    case when event_name in ('purchase', 'generate_lead', 'sign_up') then true else false end as is_conversion,
     event_value_in_usd,
-    engagement_time_msec,
+    cast({{ ga4_param_int('event_params', 'engagement_time_msec') }} as int64) as engagement_time_msec,
 
     -- (Optional) carry session-scoped attribution fields at event time for convenience
-    traffic_source,
-    traffic_medium,
-    traffic_campaign,
-    traffic_content,
-    traffic_term,
+    traffic_source_source as traffic_source,
+    traffic_source_medium as traffic_medium,
+    traffic_source_name as traffic_campaign,
 
     -- (Optional) debugging columns
     device_category,
     device_operating_system as device_os,
-    browser,
+    device_web_browser as browser,
     geo_country,
     geo_region,
     geo_city
 
-  from src
+  from enriched
 )
 
 select * from keys
