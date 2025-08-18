@@ -2,23 +2,23 @@
   config(
     materialized = 'incremental',
     unique_key   = 'event_id',
-    on_schema_change = 'sync_all_columns',
-    partition_by = {"field": "event_date_dt", "data_type": "date"},
-    cluster_by   = ["event_name", "user_pseudo_id", "ga_session_id"],
-    tags         = ['staging','ga4'],
   )
 }}
+    -- on_schema_change = 'sync_all_columns',
+    -- partition_by = {"field": "event_date_dt", "data_type": "date"},
+    -- cluster_by   = ["event_name", "user_pseudo_id", "ga_session_id"],
+    -- tags         = ['staging','ga4'], 
 
 with source_data as (
   select
     *,
     _table_suffix as table_suffix
   from {{ source('ga4_export', 'events_*') }}
-  where parse_date('%Y%m%d', _table_suffix) >= cast('{{ var("ga4_start_date", "2020-01-01") }}' as date)
-  {% if is_incremental() %}
-    and parse_date('%Y%m%d', _table_suffix) >= date_sub(current_date(), interval {{ var("ga4_incremental_lookback_days", 7) }} day)
-  {% endif %}
+  where parse_date('%Y%m%d', _table_suffix) >= cast("2021-01-26" as date)
 ),
+   -- {% if is_incremental() %}
+     -- and parse_date('%Y%m%d', _table_suffix) >= date_sub(current_date(), interval {{ var("ga4_incremental_lookback_days", 7) }} day)
+    -- {% endif %} 
 
 renamed as (
   select
@@ -120,6 +120,9 @@ renamed as (
     traffic_source.name                       as traffic_source_name,
     traffic_source.medium                     as traffic_source_medium,
     traffic_source.source                     as traffic_source_source,
+    {{ ga4_param_str('event_params', 'campaign') }} as traffic_campaign,
+    {{ ga4_param_str('event_params', 'content') }} as traffic_content,
+    {{ ga4_param_str('event_params', 'term') }} as traffic_term,
 
     -- Ecommerce struct (kept intact + useful top-levels)
     ecommerce.total_item_quantity             as ecommerce_total_item_quantity,
