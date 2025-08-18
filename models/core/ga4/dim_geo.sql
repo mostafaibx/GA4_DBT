@@ -15,7 +15,6 @@ with base as (
     coalesce(geo_region,'')          as region,
     coalesce(geo_metro,'')           as metro,
     coalesce(geo_city,'')            as city,
-    coalesce(geo_language,'')        as language,
     event_timestamp_utc,
     user_pseudo_id
   from {{ ref('stg_ga4_events') }}
