@@ -26,6 +26,8 @@ This dbt project transforms raw GA4 BigQuery export data into a structured analy
 - **Incremental Processing**: Efficient processing of daily GA4 data exports
 - **Data Quality**: Comprehensive testing and documentation
 
+
+
 ### Key Features
 
 - ✅ Handles GA4's complex nested event structure
@@ -37,18 +39,9 @@ This dbt project transforms raw GA4 BigQuery export data into a structured analy
 
 ## 🏗️ Architecture
 
-```mermaid
-graph LR
-    A[GA4 BigQuery Export] --> B[Source Layer]
-    B --> C[Staging Layer]
-    C --> D[Core Layer]
-    D --> E[Marts Layer]
-    
-    style A fill:#f9f,stroke:#333,stroke-width:2px
-    style C fill:#90EE90,stroke:#333,stroke-width:2px
-    style D fill:#4169E1,stroke:#333,stroke-width:2px
-    style E fill:#FF6B6B,stroke:#333,stroke-width:2px
-```
+### High level Flow 
+
+![Alt Text](./DBT_Drsign.drawio.png)
 
 ### Data Flow
 
