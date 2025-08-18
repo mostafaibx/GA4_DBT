@@ -20,7 +20,10 @@ with base as (
     lower(coalesce(device_mobile_marketing_name,''))    as marketing_name,
     coalesce(device_mobile_os_hardware_model, null)     as hardware_model,
     coalesce(device_language, '')                       as language,
-    coalesce(cast(device_is_limited_ad_tracking as bool), false) as limit_ad_tracking,
+    coalesce(case 
+      when lower(device_is_limited_ad_tracking) in ('true', '1', 'yes') then true 
+      else false 
+    end, false) as limit_ad_tracking,
     event_timestamp_utc,
     user_pseudo_id
   from {{ ref('stg_ga4_events') }}
