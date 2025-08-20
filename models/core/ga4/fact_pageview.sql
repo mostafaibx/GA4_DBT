@@ -2,7 +2,7 @@
   config(
     materialized='incremental',
     unique_key='event_id',
-    partition_by={"field":"view_date","data_type":"date"},
+    partition_by={"field":"event_date_dt","data_type":"date"},
     cluster_by=['user_key','ga_session_id','sk_page'],
     tags=['core','ga4','fact','content']
   )
@@ -59,6 +59,7 @@ src as (
     {{ dbt_utils.generate_surrogate_key(['user_pseudo_id','cast(ga_session_id as string)', 'page_location', 'page_referrer', 'page_title']) }} as sk_page,
     
     -- FKs for device, geo, and traffic  
+    {{ make_user_key('user_pseudo_id') }} as user_key,
     {{ make_device_key('device_category','device_operating_system','device_operating_system_version','device_web_browser','device_web_browser_version') }} as device_key,
     {{ make_geo_key('geo_country','geo_region','geo_city') }} as geo_key,
     {{ make_traffic_key('traffic_source_source','traffic_source_medium','traffic_campaign','traffic_content','traffic_term') }} as traffic_key,
