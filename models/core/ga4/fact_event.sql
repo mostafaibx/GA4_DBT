@@ -38,14 +38,14 @@ keys as (
     event_previous_timestamp_utc,
     user_pseudo_id,
     ga_session_id,
-
+ 
     -- Foreign keys (deterministic, conformed across dims)
     {{ make_date_key('event_date_dt') }}                                   as date_key,
     {{ make_user_key('user_pseudo_id') }}                                  as user_key,
     {{ make_session_key('user_pseudo_id','ga_session_id') }}               as session_key,
     {{ make_device_key('device_category','device_operating_system','device_operating_system_version','device_web_browser','device_web_browser_version') }} as device_key,
     {{ make_geo_key('geo_country','geo_region','geo_city') }}                                         as geo_key,
-    {{ make_traffic_key('traffic_source_source','traffic_source_medium','traffic_source_name') }}     as traffic_key,
+    {{ make_traffic_key('traffic_source_source','traffic_source_medium','traffic_campaign','traffic_content','traffic_term') }}     as traffic_key,
 
     -- Page key - use extracted page location
     case 
