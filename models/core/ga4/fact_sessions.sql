@@ -57,14 +57,13 @@ first_page as (
   select
     user_pseudo_id,
     ga_session_id,
-    (array_agg(page_host   order by event_timestamp_utc asc limit 1))[offset(0)] as lp_host,
-    (array_agg(page_path   order by event_timestamp_utc asc limit 1))[offset(0)] as lp_path,
-    (array_agg(page_title  order by event_timestamp_utc asc limit 1))[offset(0)] as lp_title,
-    -- Create page location by concatenating host and path
-    concat(
-      (array_agg(page_host order by event_timestamp_utc asc limit 1))[offset(0)],
-      (array_agg(page_path order by event_timestamp_utc asc limit 1))[offset(0)]
-    ) as lp_location
+    (array_agg({{ ga4_param_str('event_params', 'page_location') }} order by event_timestamp_utc asc limit 1))[offset(0)] as lp_location,
+    (array_agg({{ ga4_param_str('event_params', 'page_title') }}    order by event_timestamp_utc asc limit 1))[offset(0)] as lp_title,
+    (array_agg({{ ga4_param_str('event_params', 'page_path') }}     order by event_timestamp_utc asc limit 1))[offset(0)] as lp_path,
+    -- Extract host from page_location using regexp
+    (array_agg(
+      regexp_extract({{ ga4_param_str('event_params', 'page_location') }}, r'https?://([^/]+)')
+      order by event_timestamp_utc asc limit 1))[offset(0)] as lp_host
   from events
   where event_name = 'page_view'
   group by 1,2
@@ -84,8 +83,8 @@ rollups as (
     countif(event_name = 'page_view') as pageviews,
     sum( {{ ga4_param_int('event_params','engagement_time_msec') }} ) as engagement_time_ms,
 
-    -- conversion count if your stg exposes is_conversion boolean/flag
-    countif(coalesce(is_conversion, false)) as conversions,
+    -- conversion count based on conversion event names
+    countif(event_name in ('purchase', 'generate_lead', 'sign_up')) as conversions,
 
     -- dedupe transactions & revenue only on purchase events
     count(distinct case when event_name = 'purchase' then nullif(param_transaction_id, '') end) as transactions,
