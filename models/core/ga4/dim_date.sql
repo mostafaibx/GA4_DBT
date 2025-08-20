@@ -82,4 +82,4 @@ base as (
 )
 
 select * from base
-order by date;
+order by date
