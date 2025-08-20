@@ -124,6 +124,11 @@ renamed as (
     {{ ga4_param_str('event_params', 'content') }} as traffic_content,
     {{ ga4_param_str('event_params', 'term') }} as traffic_term,
 
+    {{ ga4_param_str('event_params','page_host') }} as page_host,
+    {{ ga4_param_str('event_params','page_path') }} as page_path,
+    {{ ga4_param_str('event_params','page_title') }} as page_title,
+    {{ ga4_param_str('event_params','page_location') }} as page_location,
+
     -- Ecommerce struct (kept intact + useful top-levels)
     ecommerce.total_item_quantity             as ecommerce_total_item_quantity,
     ecommerce.purchase_revenue_in_usd         as ecommerce_purchase_revenue_in_usd,
